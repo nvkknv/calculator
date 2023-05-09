@@ -1,16 +1,20 @@
 import org.jetbrains.annotations.NotNull;
+import java.util.Scanner;
 
 public class Main {
+    static Scanner readln = new Scanner(System.in);
     static void writeln(String s) {
         System.out.println(s);
     }
     static final int ITEM_CNT = 3; // число элементов выражения
-    static final int I_I = 3; // максимальное количество I подряд
-    static final int I_VX = 1; // максимальное количество I перед V,X
+    static final int CNT_ROMAN_PLUS = 3; // максимальное количество суммирующихся одинаковых римских цифр подряд
+    static final int CNT_ROMAN_MINUS = 1; // максимальное количество вычитающихся одинаковых римских цифр подряд
     static String sNdef = " "; // игнорируемые символы между операндами
     static String sArab = "0123456789";
-    static String sRoman = "IVX";
+    static String sRoman = "IVXLCDM";
+    static String minusDigit = "IXC"; // вычитаемые цифры
     static String sOperation = "+-/*";
+
 
     static class MyException extends ArithmeticException
     {
@@ -21,6 +25,7 @@ public class Main {
 
     enum tVid {Deny, Ndef, Arab, Roman, Operation} // вид символа, элемента
 
+// массив значений римских цифр
 // класс: строка; вид её символов
     static class tVidChars {
         tVid Vid;
@@ -84,113 +89,146 @@ public class Main {
         return result;
     }
 
+// превращает число в строку - римское число
+    static @NotNull String toRoman(int value) {
+        int k, arabDigit;
+        char digit1, digit5, digit10;
+        StringBuilder result = new StringBuilder();
+
+        if (value < 1)
+            throw new MyException("Римское число должно быть положительным");
+
+        if (value > 3999)
+            throw new MyException("Римское число не может быть более 3999");
+
+// последовательно, начиная со старшего разряда тысяч, преобразовать цифры числа в римские цифры
+        k = 1000;  // начальное значение делителя - для тысяч
+
+        while (k >= 1) {
+// определить набор трёх римских цифр для разрядов тысяча, сотня, десяток, единица
+            switch (k) {
+                case 1000 -> {
+                    digit1 = 'M';
+                    digit5 = ' ';
+                    digit10 = ' ';
+                }
+                case 100 -> {
+                    digit1 = 'C';
+                    digit5 = 'D';
+                    digit10 = 'M';
+                }
+                case 10 -> {
+                    digit1 = 'X';
+                    digit5 = 'L';
+                    digit10 = 'C';
+                }
+                default -> {
+                    digit1 = 'I';
+                    digit5 = 'V';
+                    digit10 = 'X';
+                }
+            }
+
+// получить цифру
+            arabDigit =  value / k % 10;
+// дописать римские цифры в результат в соотвествии с цифрой и её разрядом
+            switch (arabDigit) {
+                case 1, 2, 3 -> result.append(String.valueOf(digit1).repeat(arabDigit));
+                case 4 -> {
+                    result.append(digit1);
+                    result.append(digit5);
+                }
+                case 5, 6, 7, 8 -> {
+                    result.append(digit5);
+                    result.append(String.valueOf(digit1).repeat(arabDigit - 5));
+                }
+                case 9 -> {
+                    result.append(digit1);
+                    result.append(digit10);
+                }
+            }
+
+            k = k / 10;
+        }
+
+        return result.toString();
+    }
+
 // возвращает числовое значение римской цифры
-    static int valueOfRomanChar(char c) {
+    static int valueOfRomanDigit(char c) {
         return switch (c) {
             case 'I' -> 1;
             case 'V' -> 5;
             case 'X' -> 10;
+            case 'L' -> 50;
+            case 'C' -> 100;
+            case 'D' -> 500;
+            case 'M' -> 1000;
             default -> 0;
         };
     }
 
-// дописывает в конец римского числа roman символы c пока value не меньше limit,
-// возвращает value, уменьшенное на сумму дописанных символов c
-    static int appendArabChar(char c, int limit, int value, StringBuilder roman) {
-        int charValue = valueOfRomanChar(c);
-
-        while (value >= limit) {
-            roman.append(c);
-            value = value - charValue;
-        }
-
-        return value;
-    }
-
-// возвращает строку - римское число
-    static @NotNull String toRoman(int value) {
-        if (value < 1)
-            throw new MyException("Римское число должно быть положительным");
-
-        StringBuilder result = new StringBuilder();
-// добавить X
-        value = appendArabChar('X', valueOfRomanChar('X'), value, result);
-
-        if (value >= valueOfRomanChar('X') - I_VX) {
-// добавить IX
-            appendArabChar('I', valueOfRomanChar('X') - I_VX, value, result);
-            result.append("X");
-        }
-        else {
-            if (value >= valueOfRomanChar('V')) {
-// добавить VI
-                result.append("V");
-                value = value - valueOfRomanChar('V');
-                appendArabChar('I', valueOfRomanChar('I'), value, result);
-            }
-            else {
-                if (value >= valueOfRomanChar('V') - I_VX) {
-// добавить IV
-                    appendArabChar('I', valueOfRomanChar('V') - I_VX, value, result);
-                    result.append("V");
-                }
-                else {
-// добавить I
-                    appendArabChar('I', valueOfRomanChar('I'), value, result);
-                }
-            }
-        }
-
-        return result.toString();
-    } // toRoman
-
-// возвращает числовое значение римского числа
+// возвращает число - значение строки - римского числа
+// static @NotNull String toRoman(int value)
     static int toArab(@NotNull String roman) {
         int result = 0;
-        int cntI = 0; // количество I
-        boolean bI = false, bV = false; // наличие I, V
-        char c;
+        int valueC, valueLastC = 0, cntLastC = 0;
+        char c, lastC = ' ';
 
         for (int iRoman = 0; iRoman < roman.length(); iRoman++) {
-            if (bI) {
-                throw new MyException("В римском числе можно вычитать I только из последней цифры");
-            }
-
             c = roman.charAt(iRoman);
+            valueC = valueOfRomanDigit(c);
 
-            switch (c) {
-                case 'I' -> {
-                    if (cntI >= I_I) {
-                        throw new MyException("В римском числе может быть не более %s 'I' подряд".formatted(I_I));
-                    }
+            if (iRoman == 0) {
+                lastC = c;
+                valueLastC = valueC;
+                cntLastC = 1;
+                continue;
+            }
 
-                    cntI++;
+            if (valueC == valueLastC) {
+                if (cntLastC == 0) {
+                    throw new MyException("В римском числе вычитать можно только из последней из одинаковых цифр");
                 }
-                case 'V', 'X' -> {
-                    if (bV) {
-                        throw new MyException("В римском числе не может быть 'V' перед 'X' или 'V'");
-                    }
-
-                    if (cntI > I_VX) {
-                        throw new MyException("В римском числе не может быть более %s 'I' перед '%s'".formatted(I_VX, c));
-                    }
-
-                    if (c == 'V')
-                        bV = true;
-
-                    result = result - cntI;
-
-                    if (cntI > 0) {
-                        bI = true;
-                        cntI = 0;
-                    }
-
-                    result = result + valueOfRomanChar(c);
+                else {
+                    cntLastC++;
+                    continue;
                 }
             }
+
+            if (valueC > valueLastC) {
+// вычитание предыдущих и суммирование текущей
+                if (cntLastC > CNT_ROMAN_MINUS) {
+                    throw new MyException("В римском числе может быть не более %s вычитаемых '%s' подряд".formatted(CNT_ROMAN_MINUS, c));
+                }
+
+// вычитаться может только цифра I, X, C и соответствующая разряду большей цифры
+                if ((valueC <= 10 * valueLastC) && (minusDigit.indexOf(lastC) >= 0)) {
+                    result = result + valueC - valueLastC * cntLastC;
+                    lastC = c;
+                    valueLastC = valueC;
+                    cntLastC = 0;
+                }
+                else
+                    throw new MyException("В римском числе после %s не может быть %s".formatted(lastC, c));
+            }
+            else {
+// суммирование предыдущих цифр
+                if (cntLastC > CNT_ROMAN_PLUS) {
+                    throw new MyException("В римском числе может быть не более %s '%s' подряд".formatted(CNT_ROMAN_PLUS, c));
+                }
+
+                result = result + valueLastC * cntLastC;
+// запоминание текущей цифры для последующего сравнивания
+                lastC = c;
+                valueLastC = valueC;
+                cntLastC = 1;
+            }
+
         }
 
-        return result + cntI;
+        result = result + valueLastC * cntLastC;
+        return result;
     } // toArab
 
 // возвращает текстовое значение выражения, представленного в массиве элементов, содержащем число, операция, число
@@ -300,9 +338,21 @@ public class Main {
 
     public static void main(String[] args) {
         String input;
-        input = " X -X";
-        writeln("%s = %s".formatted(input, calc(input)));
 
-//        for (int i = 1; i < 22; i++) {writeln("%s %s %s".formatted(i, toArab(toRoman(i)), toRoman(i)));}
+        while (true) {
+            System.out.print("Выражение (пусто - завершить работу): ");
+            input = readln.nextLine();
+
+            if (input.equals(""))
+                break;
+
+            writeln("%s = %s".formatted(input, calc(input)));
+        }
+/*
+        for (int i = 1; i < 1001; i++) {
+            if (i != toArab(toRoman(i)))
+                writeln("%s %s %s".formatted(i, toArab(toRoman(i)), toRoman(i)));
+        }
+*/
     }
 }
